@@ -137,6 +137,5 @@ def export_onnx(ckpt_name, ensemble, scale_factor):
         onnx.checker.check_model(sim_model)
         print("=> ONNX Model exported at ", sim_model_path)
         print("=> sim ONNX Model check done!")
-
-
-export_onnx(ckpt_name="rife47.pth", ensemble=True, scale_factor=1)
+if __name__ == "__main__":
+    export_onnx(ckpt_name="rife47.pth", ensemble=True, scale_factor=1)

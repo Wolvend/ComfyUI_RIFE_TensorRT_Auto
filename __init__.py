@@ -58,6 +58,10 @@ def load_node_config(config_filename="load_rife_config.json"):
 # Load the configuration once when the module is imported
 LOAD_RIFE_NODE_CONFIG = load_node_config()
 
+# Optional known-good hashes for ONNX artifacts; populate as you verify models.
+# Format: {"model_name.onnx": "<sha256>"}
+RIFE_ONNX_HASHES = {}
+
 class AutoLoadRifeTensorrtModel:
     @classmethod
     def INPUT_TYPES(cls):
@@ -88,28 +92,54 @@ class AutoLoadRifeTensorrtModel:
     FUNCTION = "load_rife_tensorrt_model"
 
     def load_rife_tensorrt_model(self, model, precision):
+        # Constrain model/precision to known safe values to avoid path traversal and
+        # unintended downloads/overwrites.
+        allowed_models = set(LOAD_RIFE_NODE_CONFIG.get("model", {}).get("options", []))
+        allowed_precisions = set(LOAD_RIFE_NODE_CONFIG.get("precision", {}).get("options", []))
+        if model not in allowed_models:
+            raise ValueError(f"Unsupported model '{model}'. Allowed: {sorted(allowed_models)}")
+        if precision not in allowed_precisions:
+            raise ValueError(f"Unsupported precision '{precision}'. Allowed: {sorted(allowed_precisions)}")
+
         tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "rife")
         onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
 
         os.makedirs(tensorrt_models_dir, exist_ok=True)
         os.makedirs(onnx_models_dir, exist_ok=True)
 
-        onnx_model_path = os.path.join(onnx_models_dir, f"{model}.onnx")
+        safe_model = os.path.basename(model)
+        onnx_model_path = os.path.join(onnx_models_dir, f"{safe_model}.onnx")
 
         # Build tensorrt model path with detailed naming
         engine_channel = 3
         engine_min_batch, engine_opt_batch, engine_max_batch = 1, 1, 1
         engine_min_h, engine_opt_h, engine_max_h = IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX
         engine_min_w, engine_opt_w, engine_max_w = IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX
-        tensorrt_model_path = os.path.join(tensorrt_models_dir, f"{model}_{precision}_{engine_min_batch}x{engine_channel}x{engine_min_h}x{engine_min_w}_{engine_opt_batch}x{engine_channel}x{engine_opt_h}x{engine_opt_w}_{engine_max_batch}x{engine_channel}x{engine_max_h}x{engine_max_w}_{tensorrt.__version__}.trt")
+        tensorrt_model_path = os.path.join(
+            tensorrt_models_dir,
+            f"{safe_model}_{precision}_{engine_min_batch}x{engine_channel}x{engine_min_h}x{engine_min_w}_{engine_opt_batch}x{engine_channel}x{engine_opt_h}x{engine_opt_w}_{engine_max_batch}x{engine_channel}x{engine_max_h}x{engine_max_w}_{tensorrt.__version__}.trt",
+        )
 
         if not os.path.exists(tensorrt_model_path):
             if not os.path.exists(onnx_model_path):
-                onnx_model_download_url = f"https://huggingface.co/yuvraj108c/rife-onnx/resolve/main/{model}.onnx"
+                onnx_model_download_url = f"https://huggingface.co/yuvraj108c/rife-onnx/resolve/main/{safe_model}.onnx"
                 rife_logger.info(f"Downloading {onnx_model_download_url}")
                 download_file(url=onnx_model_download_url, save_path=onnx_model_path)
             else:
                 rife_logger.info(f"ONNX model found at: {onnx_model_path}")
+
+            # Integrity check if we have a known hash for this model.
+            expected_hash = RIFE_ONNX_HASHES.get(f"{safe_model}.onnx")
+            if expected_hash:
+                import hashlib
+
+                with open(onnx_model_path, "rb") as f:
+                    file_hash = hashlib.sha256(f.read()).hexdigest()
+                if file_hash != expected_hash:
+                    raise ValueError(
+                        f"Hash mismatch for {onnx_model_path}. Expected {expected_hash}, got {file_hash}."
+                    )
+                rife_logger.info(f"Verified ONNX hash for {onnx_model_path}")
 
             rife_logger.info(f"Building TensorRT engine for {onnx_model_path}: {tensorrt_model_path}")
             mm.soft_empty_cache()
@@ -143,7 +173,7 @@ class AutoRifeTensorrt:
                 "frames": ("IMAGE", {"tooltip": "Input frames for video frame interpolation"}),
                 "rife_trt_model": ("RIFE_TRT_MODEL", {"tooltip": "Tensorrt model built and loaded"}),
                 "clear_cache_after_n_frames": ("INT", {"default": 100, "min": 1, "max": 1000, "tooltip": "Clear CUDA cache after processing this many frames"}),
-                "multiplier": ("INT", {"default": 2, "min": 1, "tooltip": "Frame interpolation multiplier"}),
+                "multiplier": ("INT", {"default": 2, "min": 1, "max": 16, "tooltip": "Frame interpolation multiplier (capped to avoid runaway memory use)"}),
                 "use_cuda_graph": ("BOOLEAN", {"default": True, "tooltip": "Use CUDA graph for better performance"}),
                 "keep_model_loaded": ("BOOLEAN", {"default": False, "tooltip": "Keep model loaded in memory after processing"}),
             },

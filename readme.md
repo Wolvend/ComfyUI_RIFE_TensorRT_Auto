@@ -74,6 +74,13 @@ Models are automatically downloaded from [HuggingFace](https://huggingface.co/yu
 - **Improved Workflow**: New two-node system with `Load Rife Tensorrt Model` + `Rife Tensorrt` for better organization
 - **Updated Dependencies**: TensorRT updated to 10.13.3.9 for better performance and compatibility
 
+## 🔒 Integrity & Safety
+
+- Models are pulled automatically from HuggingFace; paths are restricted to the known model list in `load_rife_config.json`.
+- Downloads use timeouts and size guards to avoid hanging or oversized responses.
+- Optional hash verification: populate `RIFE_ONNX_HASHES` in `__init__.py` with SHA256 values for your vetted ONNX files to enforce integrity (e.g. `sha256sum rife49_ensemble_True_scale_1_sim.onnx`).
+- `multiplier` is capped (default 2, max 16) to prevent runaway memory use.
+
 ## 👏 Credits
 
 - https://github.com/styler00dollar/VSGAN-tensorrt-docker

@@ -38,7 +38,6 @@ def export_trt(trt_path=None, onnx_path=None, use_fp16=True):
     print(f"Tensorrt engine saved at: {trt_path}")
 
     return ret
-
-
-export_trt(trt_path="./models/rife49_ensemble_True_scale_1_sim.engine",
-           onnx_path="./models/rife49_ensemble_True_scale_1_sim.onnx", use_fp16=True)
+if __name__ == "__main__":
+    export_trt(trt_path="./models/rife49_ensemble_True_scale_1_sim.engine",
+               onnx_path="./models/rife49_ensemble_True_scale_1_sim.onnx", use_fp16=True)
