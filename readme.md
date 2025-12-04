@@ -89,6 +89,7 @@ Models are automatically downloaded from [HuggingFace](https://huggingface.co/yu
 
 ## 👏 Credits
 
+- Wolvend (maintainer)
 - https://github.com/styler00dollar/VSGAN-tensorrt-docker
 - https://github.com/Fannovel16/ComfyUI-Frame-Interpolation
 - https://github.com/hzwer/ECCV2022-RIFE
