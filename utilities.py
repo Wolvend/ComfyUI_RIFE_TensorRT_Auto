@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import tempfile
+import time
 
 class ColoredLogger:
     COLORS = {
@@ -76,7 +77,15 @@ class ColoredLogger:
     def critical(self, message):
         self.logger.critical(f"{self.COLORS['MAGENTA']}{message}{self.COLORS['RESET']}")
 
-def download_file(url, save_path, *, timeout=30, max_size_bytes=2 * 1024 * 1024 * 1024):
+def download_file(
+    url,
+    save_path,
+    *,
+    timeout=30,
+    max_size_bytes=2 * 1024 * 1024 * 1024,
+    retries=3,
+    backoff_seconds=1.0,
+):
     """
     Download a file from URL with progress bar
 
@@ -86,17 +95,19 @@ def download_file(url, save_path, *, timeout=30, max_size_bytes=2 * 1024 * 1024 
     """
     GREEN = '\033[92m'
     RESET = '\033[0m'
-    response = requests.get(url, stream=True, timeout=timeout)
-    response.raise_for_status()
-    total_size = int(response.headers.get('content-length', 0))
+    attempt = 0
+    while True:
+        try:
+            response = requests.get(url, stream=True, timeout=timeout)
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
 
-    # If the server tells us the size and it's too big, bail early.
-    if total_size and total_size > max_size_bytes:
-        raise ValueError(f"Download too large ({total_size} bytes) for {url}")
+            # If the server tells us the size and it's too big, bail early.
+            if total_size and total_size > max_size_bytes:
+                raise ValueError(f"Download too large ({total_size} bytes) for {url}")
 
-    os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
-    with tempfile.NamedTemporaryFile(delete=False, dir=os.path.dirname(save_path) or '.') as tmp_file,
-            tqdm(
+            os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+            with tempfile.NamedTemporaryFile(delete=False, dir=os.path.dirname(save_path) or '.') as tmp_file, tqdm(
                 desc=save_path,
                 total=total_size if total_size else None,
                 unit='iB',
@@ -105,17 +116,24 @@ def download_file(url, save_path, *, timeout=30, max_size_bytes=2 * 1024 * 1024 
                 colour='green',
                 bar_format=f'{GREEN}{{l_bar}}{{bar}}{RESET}{GREEN}{{r_bar}}{RESET}'
             ) as progress_bar:
-        bytes_written = 0
-        for data in response.iter_content(chunk_size=1024 * 1024):
-            if not data:
-                continue
-            bytes_written += len(data)
-            if bytes_written > max_size_bytes:
-                tmp_path = tmp_file.name
-                tmp_file.close()
-                os.remove(tmp_path)
-                raise ValueError(f"Download exceeded max size ({max_size_bytes} bytes) for {url}")
-            tmp_file.write(data)
-            progress_bar.update(len(data))
+                bytes_written = 0
+                for data in response.iter_content(chunk_size=1024 * 1024):
+                    if not data:
+                        continue
+                    bytes_written += len(data)
+                    if bytes_written > max_size_bytes:
+                        tmp_path = tmp_file.name
+                        tmp_file.close()
+                        os.remove(tmp_path)
+                        raise ValueError(f"Download exceeded max size ({max_size_bytes} bytes) for {url}")
+                    tmp_file.write(data)
+                    progress_bar.update(len(data))
 
-    os.replace(tmp_file.name, save_path)
+            os.replace(tmp_file.name, save_path)
+            return save_path
+        except Exception as exc:  # noqa: BLE001
+            attempt += 1
+            if attempt > retries:
+                raise
+            # lightweight backoff
+            time.sleep(backoff_seconds * attempt)

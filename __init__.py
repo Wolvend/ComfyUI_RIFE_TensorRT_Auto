@@ -62,6 +62,9 @@ LOAD_RIFE_NODE_CONFIG = load_node_config()
 # Format: {"model_name.onnx": "<sha256>"}
 RIFE_ONNX_HASHES = {}
 
+# Toggle to forbid auto-downloading/building models; set env RIFE_TRT_REQUIRE_PREBUILT=1
+REQUIRE_PREBUILT = os.environ.get("RIFE_TRT_REQUIRE_PREBUILT", "0") == "1"
+
 class AutoLoadRifeTensorrtModel:
     @classmethod
     def INPUT_TYPES(cls):
@@ -122,11 +125,16 @@ class AutoLoadRifeTensorrtModel:
 
         if not os.path.exists(tensorrt_model_path):
             if not os.path.exists(onnx_model_path):
+                if REQUIRE_PREBUILT:
+                    raise FileNotFoundError(f"{onnx_model_path} missing and auto-download disabled (set RIFE_TRT_REQUIRE_PREBUILT=0 to allow downloads).")
                 onnx_model_download_url = f"https://huggingface.co/yuvraj108c/rife-onnx/resolve/main/{safe_model}.onnx"
                 rife_logger.info(f"Downloading {onnx_model_download_url}")
                 download_file(url=onnx_model_download_url, save_path=onnx_model_path)
             else:
                 rife_logger.info(f"ONNX model found at: {onnx_model_path}")
+
+            if REQUIRE_PREBUILT and not os.path.exists(tensorrt_model_path):
+                raise FileNotFoundError(f"{tensorrt_model_path} missing and auto-build disabled (set RIFE_TRT_REQUIRE_PREBUILT=0 to allow building).")
 
             # Integrity check if we have a known hash for this model.
             expected_hash = RIFE_ONNX_HASHES.get(f"{safe_model}.onnx")

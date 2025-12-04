@@ -80,6 +80,12 @@ Models are automatically downloaded from [HuggingFace](https://huggingface.co/yu
 - Downloads use timeouts and size guards to avoid hanging or oversized responses.
 - Optional hash verification: populate `RIFE_ONNX_HASHES` in `__init__.py` with SHA256 values for your vetted ONNX files to enforce integrity (e.g. `sha256sum rife49_ensemble_True_scale_1_sim.onnx`).
 - `multiplier` is capped (default 2, max 16) to prevent runaway memory use.
+- Set `RIFE_TRT_REQUIRE_PREBUILT=1` to disable auto-download/build and require pre-provisioned ONNX/TRT files.
+- Downloads retry a few times with backoff; failures will surface quickly instead of hanging the UI.
+
+## 🧪 Tests
+
+- Run `python3 -m unittest tests/test_utilities.py` to check safety guards on downloads.
 
 ## 👏 Credits
 
